@@ -1,14 +1,149 @@
 #!/bin/bash
 
-echo "=== GitHub Codespaces Keep Alive ==="
+PID_FILE="autobot.pid"
+LOG_FILE="autobot.log"
+STATUS_FILE="status.txt"
 
-if [ "$1" = "stop" ] || [ "$1" = "n" ]; then
-    pkill -f "while true; do echo \"Hello\"" 2>/dev/null
-    rm -f pid.txt
-    echo "🛑 Keep Alive Stopped"
-else
-    nohup bash -c 'while true; do echo "Hello"; sleep 5; done' > /dev/null 2>&1 &
-    echo $! > pid.txt
-    echo "✅ Keep Alive Started (Background)"
-    echo "Ye session ko timeout hone se bachayega"
-fi
+GREEN='\033[1;32m'
+WHITE='\033[1;37m'
+RED='\033[1;31m'
+CYAN='\033[1;36m'
+NC='\033[0m'
+
+print_banner() {
+    echo -e "${GREEN}==========================================${NC}"
+    echo -e "${WHITE}        🤖 AUTO BOT v5 SYSTEM${NC}"
+    echo -e "${GREEN}==========================================${NC}"
+}
+
+auto_ping() {
+    SITES=(
+        "https://www.google.com"
+        "https://github.com"
+        "https://cloudflare.com"
+    )
+
+    COUNT=0
+
+    while true; do
+        site=${SITES[$RANDOM % ${#SITES[@]}]}
+
+        curl -s "$site" > /dev/null 2>&1
+
+        COUNT=$((COUNT + 1))
+
+        # status update
+        echo "STATUS: RUNNING" > "$STATUS_FILE"
+        echo "LAST PING: $(date)" >> "$STATUS_FILE"
+        echo "LAST SITE: $site" >> "$STATUS_FILE"
+        echo "TOTAL PINGS: $COUNT" >> "$STATUS_FILE"
+        echo "HEALTH: OK" >> "$STATUS_FILE"
+
+        # rare log
+        if (( RANDOM % 5 == 0 )); then
+            echo "$(date) - Pinged $site" >> "$LOG_FILE"
+        fi
+
+        sleep $((RANDOM % 30 + 20))
+    done
+}
+
+health_check() {
+    if [ -f "$LOG_FILE" ]; then
+        last_update=$(stat -c %Y "$LOG_FILE" 2>/dev/null)
+        now=$(date +%s)
+
+        diff=$((now - last_update))
+
+        if [ "$diff" -gt 120 ]; then
+            echo "HEALTH: ISSUE" > "$STATUS_FILE"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+run_with_healing() {
+    while true; do
+        auto_ping &
+        BOT_PID=$!
+
+        while kill -0 $BOT_PID 2>/dev/null; do
+            sleep 30
+
+            health_check
+            if [ $? -ne 0 ]; then
+                kill $BOT_PID 2>/dev/null
+                break
+            fi
+        done
+
+        sleep 5
+    done
+}
+
+dashboard() {
+    while true; do
+        clear
+
+        echo -e "${GREEN}==========================================${NC}"
+        echo -e "${WHITE}        🤖 AUTO BOT LIVE DASHBOARD${NC}"
+        echo -e "${GREEN}==========================================${NC}"
+
+        if [ -f "$STATUS_FILE" ]; then
+            STATUS=$(grep "STATUS" $STATUS_FILE | cut -d':' -f2)
+            LAST_PING=$(grep "LAST PING" $STATUS_FILE | cut -d':' -f2-)
+            LAST_SITE=$(grep "LAST SITE" $STATUS_FILE | cut -d':' -f2-)
+            TOTAL=$(grep "TOTAL PINGS" $STATUS_FILE | cut -d':' -f2)
+            HEALTH=$(grep "HEALTH" $STATUS_FILE | cut -d':' -f2)
+
+            echo -e "${CYAN}STATUS     :${NC} ${WHITE}$STATUS${NC}"
+            echo -e "${CYAN}LAST PING  :${NC} ${WHITE}$LAST_PING${NC}"
+            echo -e "${CYAN}LAST SITE  :${NC} ${WHITE}$LAST_SITE${NC}"
+            echo -e "${CYAN}TOTAL PING :${NC} ${WHITE}$TOTAL${NC}"
+            echo -e "${CYAN}HEALTH     :${NC} ${WHITE}$HEALTH${NC}"
+        else
+            echo -e "${RED}No Data Available${NC}"
+        fi
+
+        echo -e "${GREEN}==========================================${NC}"
+        echo -e "${WHITE}Press CTRL+C to exit${NC}"
+
+        sleep 1
+    done
+}
+
+start() {
+    nohup bash -c "$(declare -f auto_ping); $(declare -f health_check); $(declare -f run_with_healing); run_with_healing" > /dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+    echo -e "${GREEN}✅ Started${NC}"
+}
+
+stop() {
+    if [ -f "$PID_FILE" ]; then
+        kill $(cat "$PID_FILE") 2>/dev/null
+        rm -f "$PID_FILE"
+        echo -e "${GREEN}🛑 Stopped${NC}"
+    fi
+}
+
+status() {
+    if [ -f "$PID_FILE" ]; then
+        echo -e "${GREEN}Running${NC}"
+    else
+        echo -e "${RED}Stopped${NC}"
+    fi
+}
+
+print_banner
+
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    status) status ;;
+    dashboard) dashboard ;;
+    *)
+        echo "Usage: ./online start|stop|status|dashboard"
+        ;;
+esac
