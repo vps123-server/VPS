@@ -1,0 +1,14 @@
+#!/bin/bash
+
+echo "=== GitHub Codespaces Keep Alive ==="
+
+if [ "$1" = "stop" ] || [ "$1" = "n" ]; then
+    pkill -f "while true; do echo \"Hello\"" 2>/dev/null
+    rm -f pid.txt
+    echo "🛑 Keep Alive Stopped"
+else
+    nohup bash -c 'while true; do echo "Hello"; sleep 5; done' > /dev/null 2>&1 &
+    echo $! > pid.txt
+    echo "✅ Keep Alive Started (Background)"
+    echo "Ye session ko timeout hone se bachayega"
+fi
